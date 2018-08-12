@@ -129,8 +129,6 @@ OLD_BINHOST_MD5=$(mktemp -t "$(basename $0).XXXXXXXXXX")
 rm -rfv /usr/portage/packages/* || true
 
 [ -d ${OUTPUT_DIR} ] || mkdir -p "${OUTPUT_DIR}"
-[ "$CHECK_BUILD_DIFFS" -eq 1 ] && packages_hash ${WORKSPACE} $REPOSITORY_NAME $OLD_BINHOST_MD5
-
 [ -z "$PORTAGE_CACHE" ] || [ -d "$PORTAGE_CACHE" ] && cp -rfv $PORTAGE_CACHE /usr/portage
 [ -z "$DISTFILES" ] || [ -d "$PORTAGE_CACHE" ] && cp -rfv $DISTFILES /usr/portage/distfiles
 [ -d "$LOCAL_OVERLAY" ] && cp -rfv $LOCAL_OVERLAY /usr/local/local_portage
