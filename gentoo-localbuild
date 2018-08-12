@@ -1,0 +1,173 @@
+#!/bin/bash
+# mudler <mudler@gentoo.org>
+# and from Sabayon guys :)
+set -e
+
+export REPOSITORY_NAME="${REPOSITORY_NAME:-$(basename $(pwd))}"
+export LC_ALL=en_US.UTF-8
+# Speed up test runs by disabling slow syncs and mirror sorts
+export SKIP_PORTAGE_SYNC="${SKIP_PORTAGE_SYNC:-0}"
+export WORKSPACE="${WORKSPACE:-$PWD}"
+export MAKE_CONF="${MAKE_CONF:-}"
+export LOCAL_OVERLAY="${LOCAL_OVERLAY:-$WORKSPACE/local_overlay}"
+
+export BUILDFILE=${BUILDFILE:-build.yaml}
+export BUILDER=${BUILDER:-/usr/sbin/gentoo-builder}
+
+if [ -e "$WORKSPACE/specs/make.conf" ]; then
+  echo "You specified a make.conf. I hope you know what are you doing"
+  export MAKE_CONF="${MAKE_CONF:-$WORKSPACE/specs/make.conf}"
+fi
+
+
+set_var_from_yaml_if_nonempty() {
+	local _YAML_FILE=$1
+	shift
+
+	local _do_export=0
+	local _do_postprocess=0
+
+	while true; do
+		case $1 in
+		-e)
+			_do_export=1
+			shift
+			;;
+		-p)
+			_do_postprocess=1
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	local _shyaml_cmd=$1
+	local _key=$2
+	# Make sure it doesn't clash with this function's variable or there's a bug.
+	# (Variables in this function start with _, so best to avoid such ones.)
+	local _out_var=$3
+
+	# Using eval, so...
+	[[ $_out_var =~ ^[A-Za-z0-9_]+$ ]] || { echo "no way: '$_out_var'"; exit 1; }
+
+	local _tmp
+	_tmp=$(cat "$_YAML_FILE" | shyaml "$_shyaml_cmd" "$_key" 2> /dev/null) || true
+
+	if [[ -n $_tmp ]]; then
+		[[ $_do_postprocess = 1 ]] && _tmp=$(echo "$_tmp" | xargs echo)
+		eval "$_out_var=\$_tmp"
+		[[ $_do_export = 1 ]] && export "$_out_var"
+	fi
+	return 0
+}
+
+load_env_from_yaml() {
+local YAML_FILE=$1
+local tmp
+
+# repository.*
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value repository.description REPOSITORY_DESCRIPTION  # REPOSITORY_DESCRIPTION
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value repository.maintenance.keep_previous_versions KEEP_PREVIOUS_VERSIONS # KEEP_PREVIOUS_VERSIONS
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-values repository.maintenance.remove TOREMOVE # replaces package_remove
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value repository.maintenance.clean_cache CLEAN_CACHE # CLEAN_CACHE
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value repository.maintenance.check_diffs CHECK_BUILD_DIFFS # CHECK_BUILD_DIFFS
+
+# recompose our BUILD_ARGS
+# build.*
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-value build.share_workspace SHARE_WORKSPACE
+set_var_from_yaml_if_nonempty "$YAML_FILE" -p get-values build.target BUILD_ARGS  #mixed toinstall BUILD_ARGS
+set_var_from_yaml_if_nonempty "$YAML_FILE" -p get-values build.injected_target BUILD_INJECTED_ARGS  #mixed toinstall BUILD_ARGS
+set_var_from_yaml_if_nonempty "$YAML_FILE" -p get-values build.overlays tmp; [[ -n ${tmp} ]] && BUILD_ARGS="${BUILD_ARGS} --layman ${tmp}" #--layman options
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-value build.verbose BUILDER_VERBOSE
+
+# build.docker.*
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.docker.image DOCKER_IMAGE # DOCKER_IMAGE
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.docker.entropy_image DOCKER_EIT_IMAGE # DOCKER_EIT_IMAGE
+
+# build.emerge.*
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.default_args EMERGE_DEFAULTS_ARGS # EMERGE_DEFAULTS_ARGS
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.split_install EMERGE_SPLIT_INSTALL # EMERGE_SPLIT_INSTALL
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.features FEATURES # FEATURES
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.profile BUILDER_PROFILE # BUILDER_PROFILE
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.jobs BUILDER_JOBS # BUILDER_JOBS
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.preserved_rebuild PRESERVED_REBUILD # PRESERVED_REBUILD
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.skip_sync SKIP_PORTAGE_SYNC # SKIP_PORTAGE_SYNC
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.webrsync WEBRSYNC # WEBRSYNC
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-values build.emerge.remove EMERGE_REMOVE
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-values build.emerge.remote_overlay REMOTE_OVERLAY
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.remote_conf_portdir REMOTE_CONF_PORTDIR
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.emerge.remote_portdir REMOTE_PORTDIR
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-values build.emerge.remove_remote_overlay REMOVE_REMOTE_OVERLAY
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e -p get-values build.emerge.remove_layman_overlay REMOVE_LAYMAN_OVERLAY
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-value build.qa_checks QA_CHECKS # QA_CHECKS, default 0
+
+# build.script.pre
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-values build.script.pre PRE_SCRIPT_COMMANDS
+# build.script.post
+set_var_from_yaml_if_nonempty "$YAML_FILE" -e get-values build.script.post POST_SCRIPT_COMMANDS
+
+export BUILD_ARGS
+export BUILD_INJECTED_ARGS
+
+}
+
+if [ ! -e ${BUILDFILE} ]; then
+    echo "Must be run from a repository directory containing a ${BUILDFILE}"
+    exit 1
+fi
+
+load_env_from_yaml ${BUILDFILE}
+
+export OUTPUT_DIR="${WORKSPACE}/artifacts/binhost"
+export CHECK_BUILD_DIFFS=${CHECK_BUILD_DIFFS:-1}
+
+NEW_BINHOST_MD5=$(mktemp -t "$(basename $0).XXXXXXXXXX")
+OLD_BINHOST_MD5=$(mktemp -t "$(basename $0).XXXXXXXXXX")
+
+rm -rfv /usr/portage/packages/* || true
+
+[ -d ${OUTPUT_DIR} ] || mkdir -p "${OUTPUT_DIR}"
+[ "$CHECK_BUILD_DIFFS" -eq 1 ] && packages_hash ${WORKSPACE} $REPOSITORY_NAME $OLD_BINHOST_MD5
+
+[ -z "$PORTAGE_CACHE" ] || [ -d "$PORTAGE_CACHE" ] && cp -rfv $PORTAGE_CACHE /usr/portage
+[ -z "$DISTFILES" ] || [ -d "$PORTAGE_CACHE" ] && cp -rfv $DISTFILES /usr/portage/distfiles
+[ -d "$LOCAL_OVERLAY" ] && cp -rfv $LOCAL_OVERLAY /usr/local/local_portage
+
+PRE_SCRIPT_FILE=$(mktemp -t "$(basename $0).XXXXXXXXXX")
+POST_SCRIPT_FILE=$(mktemp -t "$(basename $0).XXXXXXXXXX")
+
+# Prepare and post script
+[ -n "${PRE_SCRIPT_COMMANDS}" ] && \
+  printf '%s\n' "${PRE_SCRIPT_COMMANDS[@]}" > $PRE_SCRIPT_FILE && \
+  cp -rfv $PRE_SCRIPT_FILE /pre-script
+
+[ -n "${POST_SCRIPT_COMMANDS}" ] && \
+  printf '%s\n' "${POST_SCRIPT_COMMANDS[@]}" > $POST_SCRIPT_FILE && \
+  cp -rfv $POST_SCRIPT_FILE /post-script
+
+if [ -d "$WORKSPACE"/specs ]; then
+  echo "Specs found"
+  [ -e "$WORKSPACE"/specs/custom.mask ] && cp -rfv "$WORKSPACE/specs/custom.mask" "/etc/portage/package.mask/99-custom.mask"
+  [ -e "$WORKSPACE"/specs/custom.unmask ] &&  cp -rfv "$WORKSPACE/specs/custom.unmask" "/etc/portage/package.unmask/99-custom.unmask"
+  [ -e "$WORKSPACE"/specs/custom.use ] &&  cp -rfv "$WORKSPACE/specs/custom.use" "/etc/portage/package.use/99-custom.use"
+  [ -e "$WORKSPACE"/specs/custom.env ] &&  cp -rfv "$WORKSPACE/specs/custom.env" "/etc/portage/package.env"
+  [ -e "$WORKSPACE"/specs/custom.keywords ] &&  cp -rfv "$WORKSPACE/specs/custom.keywords" "/etc/portage/package.keywords/99-custom.keywords"
+  [ -d "$WORKSPACE"/specs/env ] &&  cp -rfv "$WORKSPACE/specs/env/" "/etc/portage/env/"
+fi
+
+# Debug what env vars are being passed to the builder
+printenv | sort
+
+TEMPDIR=$(mktemp -d)
+
+pushd /
+  /usr/bin/tini -s -- ${BUILDER} $BUILD_ARGS
+popd
+
+rm -rf $PRE_SCRIPT_FILE
+rm -rf $POST_SCRIPT_FILE
+cp -R /usr/portage/packages/* ${OUTPUT_DIR} || true
+
+echo "=== ALL DONE. bye ==="
