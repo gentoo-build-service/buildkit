@@ -373,7 +373,7 @@ if ( $remove_remote_overlay and $remove_remote_overlay ne "" ) {
 }
 
 _system("mkdir -p /usr/portage/distfiles/git3-src");
-portage_perms('/usr/portage');
+portage_perms('/usr/portage/distfiles');
 
 unless ( $skip_portage_sync == 1 ) {
 
