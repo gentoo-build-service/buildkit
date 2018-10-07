@@ -321,11 +321,13 @@ if ( $remote_portdir ne "" ) {
     _system("git clone $remote_portdir /usr/portage");
 }
 
-_system("mkdir /var/lib/layman") if ( !-d "/var/lib/layman" );
-_system("touch /var/lib/layman/make.conf && layman-updater -R")
-    if ( !-e "/var/lib/layman/make.conf" );
+if (@overlays > 0) {
+    _system("mkdir /var/lib/layman") if ( !-d "/var/lib/layman" );
+    _system("touch /var/lib/layman/make.conf && layman-updater -R")
+        if ( !-e "/var/lib/layman/make.conf" );
 
-_system("echo 'y' | layman -f -a $_") for @overlays;
+    _system("echo 'y' | layman -f -a $_") for @overlays;
+}
 
 my $reponame = "LocalOverlay";
 
@@ -378,7 +380,7 @@ portage_perms('/usr/portage/distfiles');
 unless ( $skip_portage_sync == 1 ) {
 
     # sync portage and overlays
-    _system("layman -S");
+    _system("layman -S") if @overlays > 0;
     if ( $webrsync == 1 ) {
         _system("emerge-webrsync");
     }
