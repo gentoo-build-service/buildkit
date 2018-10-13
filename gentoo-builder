@@ -336,11 +336,12 @@ _system(
     "rm -rf /usr/local/portage;cp -rf /usr/local/local_portage /usr/local/portage"
 ) if ( -d "/usr/local/local_portage" );
 
+ _system("echo 'masters = gentoo' > /usr/local/portage/metadata/layout.conf") if !-f "/usr/local/portage/metadata/layout.conf";
+_system("mkdir -p /usr/local/portage/metadata") if !-d "/usr/local/portage/metadata";
+_system("mkdir -p /usr/local/portage/profiles") if !-d "/usr/local/portage/profiles";
+
 if ( !-f "/usr/local/portage/profiles/repo_name" ) {
-    _system("mkdir -p /usr/local/portage/{metadata,profiles}");
     _system("echo 'LocalOverlay' > /usr/local/portage/profiles/repo_name");
-    _system(
-        "echo 'masters = gentoo' > /usr/local/portage/metadata/layout.conf");
 }
 else {
     open FILE, "</usr/local/portage/profiles/repo_name";
