@@ -149,11 +149,28 @@ POST_SCRIPT_FILE=$(mktemp -t "$(basename $0).XXXXXXXXXX")
 
 if [ -d "$WORKSPACE"/specs ]; then
   echo "Specs found"
-  [ -e "$WORKSPACE"/specs/custom.mask ] && cp -rfv "$WORKSPACE/specs/custom.mask" "/etc/portage/package.mask/99-custom.mask"
-  [ -e "$WORKSPACE"/specs/custom.unmask ] &&  cp -rfv "$WORKSPACE/specs/custom.unmask" "/etc/portage/package.unmask/99-custom.unmask"
-  [ -e "$WORKSPACE"/specs/custom.use ] &&  cp -rfv "$WORKSPACE/specs/custom.use" "/etc/portage/package.use/99-custom.use"
+  if [ -e "$WORKSPACE"/specs/custom.mask ] ; then
+    mkdir -p /etc/portage/package.unmask || true
+    cp -rfv "$WORKSPACE/specs/custom.mask" "/etc/portage/package.mask/99-custom.mask"
+  fi
+
+  if [ -e "$WORKSPACE"/specs/custom.unmask ] ; then
+    mkdir -p /etc/portage/package.unmask || true
+    cp -rfv "$WORKSPACE/specs/custom.unmask" "/etc/portage/package.unmask/99-custom.unmask"
+  fi
+
+  if [ -e "$WORKSPACE"/specs/custom.use ] ; then
+    mkdir -p /etc/portage/package.use || true
+    cp -rfv "$WORKSPACE/specs/custom.use" "/etc/portage/package.use/99-custom.use"
+  fi
+
+  if [ -e "$WORKSPACE"/specs/custom.keywords ] ; then
+    mkdir -p /etc/portage/package.keywords || true
+    cp -rfv "$WORKSPACE/specs/custom.keywords" "/etc/portage/package.keywords/99-custom.keywords"
+  fi
+
   [ -e "$WORKSPACE"/specs/custom.env ] &&  cp -rfv "$WORKSPACE/specs/custom.env" "/etc/portage/package.env"
-  [ -e "$WORKSPACE"/specs/custom.keywords ] &&  cp -rfv "$WORKSPACE/specs/custom.keywords" "/etc/portage/package.keywords/99-custom.keywords"
+
   [ -d "$WORKSPACE"/specs/env ] &&  cp -rfv "$WORKSPACE/specs/env/" "/etc/portage/env/"
 fi
 
